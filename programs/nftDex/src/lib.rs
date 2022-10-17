@@ -14,7 +14,7 @@ const OFFER_CREATE_PREFIX: &[u8] = b"offer_create";
 const OFFER_SUPPLY_PREFIX: &[u8] = b"offer_supply";
 const OFFER_DEMAND_PREFIX: &[u8] = b"offer_demand";
 
-declare_id!("BQNWkSGD2TtpGVLq4TLcpWgEb2B2uSimixxVYbXP7NR9");
+declare_id!("Gq4Q9xavomzEHTgz1a5NcVtEADzQm9zmHQ7uW35VwyQ9");
 
 #[program]
 pub mod nft_dex {
@@ -102,7 +102,7 @@ pub mod nft_dex {
 
     }
 
-    pub fn offer_delete(ctx:Context<OfferCreate>,offer_id:u32) -> Result<()> {
+    pub fn offer_delete(ctx:Context<OfferDelete>,offer_id:u32) -> Result<()> {
         let offer_create = &mut ctx.accounts.offer_create;
         let offer_supply = &mut ctx.accounts.offer_supply;
         let offer_demand = &mut ctx.accounts.offer_demand;
@@ -126,7 +126,7 @@ pub mod nft_dex {
         Ok(())
     }
 
-    pub fn offer_delete_exp(ctx:Context<OfferCreate>,expiration: i64) -> Result<()> {
+    pub fn offer_delete_exp(ctx:Context<OfferDeleteExp>,expiration: i64) -> Result<()> {
         let offer_create = &mut ctx.accounts.offer_create;
         let offer_supply = &mut ctx.accounts.offer_supply;
         let offer_demand = &mut ctx.accounts.offer_demand;
@@ -156,7 +156,7 @@ pub mod nft_dex {
         Ok(())
     }
 
-    pub fn trade_create(ctx:Context<OfferCreate>,offer_id: u32) -> Result<()> {
+    pub fn trade_create(ctx:Context<TradeCreate>,offer_id: u32) -> Result<()> {
         let offer_create = &mut ctx.accounts.offer_create;
         let offer_supply = &mut ctx.accounts.offer_supply;
         let offer_demand = &mut ctx.accounts.offer_demand;
@@ -312,4 +312,108 @@ pub struct OfferCreate<'info> {
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
     pub clock: Sysvar<'info, Clock>,
+}
+
+#[derive(Accounts)]
+
+pub struct OfferDelete<'info> {
+    /// The offer account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_CREATE_PREFIX],
+        bump = offer_create.bump,
+    )]
+    pub offer_create: Account<'info,OfferCreateAccount>,
+
+    /// The offer supply account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_SUPPLY_PREFIX],
+        bump = offer_supply.bump,
+    )]
+    pub offer_supply: Account<'info,OfferSupplyAccount>,
+
+    /// The offer demand account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_DEMAND_PREFIX],
+        bump = offer_demand.bump,
+    )]
+    pub offer_demand: Account<'info,OfferDemandAccount>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut, signer)]
+    pub owner: AccountInfo<'info>
+}
+
+#[derive(Accounts)]
+pub struct OfferDeleteExp<'info> {
+    /// The offer account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_CREATE_PREFIX],
+        bump = offer_create.bump,
+    )]
+    pub offer_create: Account<'info,OfferCreateAccount>,
+
+    /// The offer supply account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_SUPPLY_PREFIX],
+        bump = offer_supply.bump,
+    )]
+    pub offer_supply: Account<'info,OfferSupplyAccount>,
+
+    /// The offer demand account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_DEMAND_PREFIX],
+        bump = offer_demand.bump,
+    )]
+    pub offer_demand: Account<'info,OfferDemandAccount>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut, signer)]
+    pub owner: AccountInfo<'info>,
+
+    pub clock: Sysvar<'info, Clock>,
+}
+
+#[derive(Accounts)]
+pub struct TradeCreate<'info> {
+    /// The offer account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_CREATE_PREFIX],
+        bump = offer_create.bump,
+    )]
+    pub offer_create: Account<'info,OfferCreateAccount>,
+
+    /// The offer supply account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_SUPPLY_PREFIX],
+        bump = offer_supply.bump,
+    )]
+    pub offer_supply: Account<'info,OfferSupplyAccount>,
+
+    /// The offer demand account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_DEMAND_PREFIX],
+        bump = offer_demand.bump,
+    )]
+    pub offer_demand: Account<'info,OfferDemandAccount>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut, signer)]
+    pub owner: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        constraint = nft_token_account.amount == 1 @ NFTDEXError::NFTAccountEmpty,
+    )]
+    pub nft_token_account: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>
 }
