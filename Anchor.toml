@@ -1,7 +1,7 @@
 [features]
 seeds = false
 [programs.devnet]
-nft_dex = "Gq4Q9xavomzEHTgz1a5NcVtEADzQm9zmHQ7uW35VwyQ9"
+nft_dex = "BmUuwq1nhcVfZVSLE9HTYf4DCHfWkrzT2eSQ1GpizM72"
 
 [registry]
 url = "https://anchor.projectserum.com"

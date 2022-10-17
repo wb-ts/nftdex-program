@@ -14,7 +14,7 @@ const OFFER_CREATE_PREFIX: &[u8] = b"offer_create";
 const OFFER_SUPPLY_PREFIX: &[u8] = b"offer_supply";
 const OFFER_DEMAND_PREFIX: &[u8] = b"offer_demand";
 
-declare_id!("Gq4Q9xavomzEHTgz1a5NcVtEADzQm9zmHQ7uW35VwyQ9");
+declare_id!("BmUuwq1nhcVfZVSLE9HTYf4DCHfWkrzT2eSQ1GpizM72");
 
 #[program]
 pub mod nft_dex {
