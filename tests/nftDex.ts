@@ -9,8 +9,9 @@ describe("nftDex", async () => {
 
     const program = anchor.workspace.NftDex as Program<NftDex>;
     let provider = anchor.Provider.env();
+    const payer = anchor.web3.Keypair.generate();
     // Expiration DateTime
-    let datetime = new Date().getTime() + 10000;
+    let datetime = 24 * 3600 * 1000;
     let nftMint: anchor.web3.PublicKey;
 
     // offer_create_account , offer_supply_account , offer_demand_account are PDA accounts (https://solanacookbook.com/core-concepts/pdas.html#facts)
@@ -35,9 +36,30 @@ describe("nftDex", async () => {
 
     it("CreateAccount Is initialized!", async () => {
 
+        // Airdrop Sol to Payer Account.
+
+        const airdropSignature = await provider.connection.requestAirdrop(
+            payer.publicKey,
+            anchor.web3.LAMPORTS_PER_SOL,
+        );
+
+        await provider.connection.confirmTransaction(airdropSignature);
+
         const accountInfo = await provider.connection.getAccountInfo(offer_create_account[0]);
         // offerCreate Account is already Initialized;
-        if (accountInfo && accountInfo.data.length) return;
+        if (accountInfo && accountInfo.data.length) {
+            console.log("Accounts are already used! Format accounts...");
+            const tx = await program.rpc.formatAccounts({
+                accounts: {
+                    offerCreate: offer_create_account[0],
+                    offerSupply: offer_supply_account[0],
+                    offerDemand: offer_demand_account[0],
+                    owner: provider.wallet.publicKey
+                }
+            });
+            console.log("Your transaction signature", tx);
+            return;
+        }
 
         const tx = await program.rpc.initializeCreateAccount(offer_create_account[1], {
             accounts: {
@@ -78,73 +100,99 @@ describe("nftDex", async () => {
         });
         console.log("Your transaction signature", tx);
     });
+    
+    // Offer 1 : supply 1, supply 3, demand 2
+    // Offer 2 : supply 4, demand 1,
+    // Offer 3 : supply 2, demand 3, demand 4
 
+    // Offer 4 : supply 3, demand 2 
+    // Offer 5 : supply 2, demand 4 
+    const offers = [
+        {
+            nft_supply_ids: [
+                new anchor.web3.PublicKey('9mFEkA7gLFLMRqbN9ZZNgnqVb9iY6ecZCdNgQ6zkMCzj'),
+                new anchor.web3.PublicKey('4QZ3khRPradVxXKf3Q1LpKx38e5MPDDDEUvsR8ute2ic')
+            ],
+            nft_demand_ids: [new anchor.web3.PublicKey('23UZp2YBgNU3ThACMYbvJypbUrLm59vsFFeTrhkBAaPg')]
+        },
+        {
+            nft_supply_ids: [new anchor.web3.PublicKey('BS3XrYVDzuwB5VirtUV9wYnr99H6FQwcnxTJewxh9K1p')],
+            nft_demand_ids: [new anchor.web3.PublicKey('9mFEkA7gLFLMRqbN9ZZNgnqVb9iY6ecZCdNgQ6zkMCzj')]
+        },
+        {
+            nft_supply_ids: [new anchor.web3.PublicKey('23UZp2YBgNU3ThACMYbvJypbUrLm59vsFFeTrhkBAaPg')],
+            nft_demand_ids: [
+                new anchor.web3.PublicKey('4QZ3khRPradVxXKf3Q1LpKx38e5MPDDDEUvsR8ute2ic'),
+                new anchor.web3.PublicKey('BS3XrYVDzuwB5VirtUV9wYnr99H6FQwcnxTJewxh9K1p')
+            ]
+        },
+        {
+            nft_supply_ids: [new anchor.web3.PublicKey('4QZ3khRPradVxXKf3Q1LpKx38e5MPDDDEUvsR8ute2ic')],
+            nft_demand_ids: [new anchor.web3.PublicKey('23UZp2YBgNU3ThACMYbvJypbUrLm59vsFFeTrhkBAaPg')]
+        },
+        {
+            nft_supply_ids: [new anchor.web3.PublicKey('23UZp2YBgNU3ThACMYbvJypbUrLm59vsFFeTrhkBAaPg')],
+            nft_demand_ids: [new anchor.web3.PublicKey('BS3XrYVDzuwB5VirtUV9wYnr99H6FQwcnxTJewxh9K1p')]
+        },
+    ];
 
-    it("OfferCreate", async () => {
+    offers.map(function (offer, index) {
 
-        const nft_supply_id = '9mFEkA7gLFLMRqbN9ZZNgnqVb9iY6ecZCdNgQ6zkMCzj';
-        const nft_demand_id = '23UZp2YBgNU3ThACMYbvJypbUrLm59vsFFeTrhkBAaPg';
+        it("Offer_" + (index + 1) + " Create", async () => {
 
-        const payer = anchor.web3.Keypair.generate();
-        const mintAuthority = anchor.web3.Keypair.generate();
-        const freezeAuthority = anchor.web3.Keypair.generate();
+            const mintAuthority = anchor.web3.Keypair.generate();
+            const freezeAuthority = anchor.web3.Keypair.generate();
 
-        // Airdrop Sol to Payer Account.
+            nftMint = await createMint(
+                provider.connection,
+                payer,
+                mintAuthority.publicKey,
+                freezeAuthority.publicKey,
+                9
+            );
+            // Crate NFT Token Account.
+            const nftTokenAddress = await createAssociatedTokenAccount(
+                provider.connection,
+                payer,
+                nftMint,
+                provider.wallet.publicKey,
 
-        const airdropSignature = await provider.connection.requestAirdrop(
-            payer.publicKey,
-            anchor.web3.LAMPORTS_PER_SOL,
-        );
+            );
+            // Mint Token to NFT Token Account.
+            await mintTo(
+                provider.connection,
+                payer,
+                nftMint,
+                nftTokenAddress,
+                mintAuthority,
+                1 // because decimals for the mint are set to 9 
+            );
 
-        await provider.connection.confirmTransaction(airdropSignature);
+            if (index == 4) datetime -= 2 * 3600 * 1000;
 
-        // Create Token
-
-        nftMint = await createMint(
-            provider.connection,
-            payer,
-            mintAuthority.publicKey,
-            freezeAuthority.publicKey,
-            9
-        );
-        // Crate NFT Token Account.
-        const nftTokenAddress = await createAssociatedTokenAccount(
-            provider.connection,
-            payer,
-            nftMint,
-            provider.wallet.publicKey,
-
-        );
-        // Mint Token to NFT Token Account.
-        await mintTo(
-            provider.connection,
-            payer,
-            nftMint,
-            nftTokenAddress,
-            mintAuthority,
-            1 // because decimals for the mint are set to 9 
-        );
-
-        const tx = await program.rpc.offerCreate(new anchor.BN(datetime), new anchor.web3.PublicKey(nft_supply_id), new anchor.web3.PublicKey(nft_demand_id), {
-            accounts: {
-                offerCreate: offer_create_account[0],
-                offerSupply: offer_supply_account[0],
-                offerDemand: offer_demand_account[0],
-                owner: provider.wallet.publicKey,
-                nftTokenAccount: nftTokenAddress,
-                nftMint: nftMint,
-                systemProgram: anchor.web3.SystemProgram.programId,
-                rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-                tokenProgram: TOKEN_PROGRAM_ID,
-                clock: anchor.web3.SYSVAR_CLOCK_PUBKEY
-            }
+            const tx = await program.rpc.offerCreate(new anchor.BN(datetime), offer.nft_supply_ids, offer.nft_demand_ids, {
+                accounts: {
+                    offerCreate: offer_create_account[0],
+                    offerSupply: offer_supply_account[0],
+                    offerDemand: offer_demand_account[0],
+                    owner: provider.wallet.publicKey,
+                    nftTokenAccount: nftTokenAddress,
+                    nftMint: nftMint,
+                    systemProgram: anchor.web3.SystemProgram.programId,
+                    rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    clock: anchor.web3.SYSVAR_CLOCK_PUBKEY
+                }
+            });
+            console.log("Your transaction signature", tx);
         });
-        console.log("Your transaction signature", tx);
-    });
+    })
+
+
 
     it("OfferDelete", async () => {
 
-        const tx = await program.rpc.offerDelete(1, {
+        const tx = await program.rpc.offerDelete(4, {
             accounts: {
                 offerCreate: offer_create_account[0],
                 offerSupply: offer_supply_account[0],
@@ -157,7 +205,7 @@ describe("nftDex", async () => {
 
     it("OfferDeleteExp", async () => {
 
-        const tx = await program.rpc.offerDeleteExp(new anchor.BN(datetime), {
+        const tx = await program.rpc.offerDeleteExp(new anchor.BN(datetime + 3600 * 1000), {
             accounts: {
                 offerCreate: offer_create_account[0],
                 offerSupply: offer_supply_account[0],
@@ -176,14 +224,15 @@ describe("nftDex", async () => {
             provider.wallet.publicKey
         );
 
-        const tx = await program.rpc.tradeCreate(1, {
+        const tx = await program.rpc.tradeCreate([1, 2, 3], {
             accounts: {
                 offerCreate: offer_create_account[0],
                 offerSupply: offer_supply_account[0],
                 offerDemand: offer_demand_account[0],
                 owner: provider.wallet.publicKey,
                 nftTokenAccount: nftTokenAddress,
-                tokenProgram: TOKEN_PROGRAM_ID
+                tokenProgram: TOKEN_PROGRAM_ID,
+                clock: anchor.web3.SYSVAR_CLOCK_PUBKEY
             }
         });
         console.log("Your transaction signature", tx);

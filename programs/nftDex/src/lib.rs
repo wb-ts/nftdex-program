@@ -51,7 +51,25 @@ pub mod nft_dex {
         Ok(())
     }
 
-    pub fn offer_create(ctx:Context<OfferCreate>,datetime:i64,nft_supply_id:Pubkey,nft_demand_id:Pubkey) -> Result<()> {
+    pub fn format_accounts(ctx:Context<FormatAccounts>) -> Result<()> {
+        let offer_create = &mut ctx.accounts.offer_create;
+        let offer_supply = &mut ctx.accounts.offer_supply;
+        let offer_demand = &mut ctx.accounts.offer_demand;
+        let signer = &mut ctx.accounts.owner;
+
+        if signer.to_account_info().key() != offer_create.owner {
+            return Err(NFTDEXError::OfferNotOwner.into());
+        }
+        
+        offer_create.offers = [].to_vec();
+        offer_create.index = 0;
+        offer_supply.offers = [].to_vec();
+        offer_demand.offers = [].to_vec();
+
+        Ok(())
+    }
+
+    pub fn offer_create(ctx:Context<OfferCreate>,datetime:i64,nft_supply_ids:Vec<Pubkey>,nft_demand_ids:Vec<Pubkey>) -> Result<()> {
         let offer_create = &mut ctx.accounts.offer_create;
         let offer_supply = &mut ctx.accounts.offer_supply;
         let offer_demand = &mut ctx.accounts.offer_demand;
@@ -71,19 +89,26 @@ pub mod nft_dex {
 
         offer_create.offers.push(offer_item);
         offer_create.index = index;
-        
-        let offer_supply_item = OfferSupplyItem{
-            offer_id: index,
-            nft_id: nft_supply_id,
-        };
-        offer_supply.offers.push(offer_supply_item);
 
-        let offer_demand_item = OfferDemandItem{
-            offer_id: index,
-            nft_id: nft_demand_id,
-            owner: owner.to_account_info().key(),
-        };
-        offer_demand.offers.push(offer_demand_item);
+        for nft_supply_id in nft_supply_ids {
+
+            let offer_supply_item = OfferSupplyItem{
+                offer_id: index,
+                nft_id: nft_supply_id,
+            };
+            offer_supply.offers.push(offer_supply_item);
+        }
+        
+        for nft_demand_id in nft_demand_ids {
+            
+            let offer_demand_item = OfferDemandItem{
+                offer_id: index,
+                nft_id: nft_demand_id,
+                owner: owner.to_account_info().key(),
+            };
+            offer_demand.offers.push(offer_demand_item);
+        }
+        
 
         //transfer nft ownership to vault
         let authority_accounts = SetAuthority {
@@ -118,7 +143,8 @@ pub mod nft_dex {
             }
         }
         if flag {
-            offer_create.offers.retain(|x| x.offer_id != offer_id);offer_supply.offers.retain(|x| x.offer_id != offer_id);
+            offer_create.offers.retain(|x| x.offer_id != offer_id);
+            offer_supply.offers.retain(|x| x.offer_id != offer_id);
             offer_demand.offers.retain(|x| x.offer_id != offer_id);
         }
         
@@ -131,7 +157,6 @@ pub mod nft_dex {
         let offer_supply = &mut ctx.accounts.offer_supply;
         let offer_demand = &mut ctx.accounts.offer_demand;
         let signer = &mut ctx.accounts.owner;
-        let clock = &ctx.accounts.clock;
 
         if signer.to_account_info().key() != offer_create.owner {
             return Err(NFTDEXError::OfferNotOwner.into());
@@ -140,7 +165,7 @@ pub mod nft_dex {
         let mut keys = Vec::new();
         
         for offer_item in offer_create.offers.iter() {
-            if offer_item.created + offer_item.expiration + expiration <  clock.unix_timestamp {
+            if offer_item.expiration < expiration {
                 keys.push(offer_item.offer_id)
                 
             }
@@ -156,49 +181,101 @@ pub mod nft_dex {
         Ok(())
     }
 
-    pub fn trade_create(ctx:Context<TradeCreate>,offer_id: u32) -> Result<()> {
+    pub fn trade_create(ctx:Context<TradeCreate>,offer_ids: Vec<u32>) -> Result<()> {
         let offer_create = &mut ctx.accounts.offer_create;
         let offer_supply = &mut ctx.accounts.offer_supply;
         let offer_demand = &mut ctx.accounts.offer_demand;
         let nft_token_account = &mut ctx.accounts.nft_token_account;
         let token_program = &ctx.accounts.token_program;
+        let clock = &ctx.accounts.clock;
         let signer = &mut ctx.accounts.owner;
 
-        let mut flag: bool = false;
-
+        let mut is_offer_exist_not_expired: bool = true;
         
-        for offer_item in offer_create.offers.iter_mut() {
-            if offer_item.offer_id == offer_id {
-                flag = true;
+        for offer_id in offer_ids.iter() {
+            msg!("offer_id: {}", *offer_id);
+            let mut flag: bool = false;
+            for offer_item in offer_create.offers.iter_mut() {
+                msg!("offer_item.offer_id: {}", offer_item.offer_id);
+                if offer_item.offer_id == *offer_id {
+                    flag = true;
+                    if offer_item.created + offer_item.expiration < clock.unix_timestamp {
+                        is_offer_exist_not_expired = false;
+                        msg!("Offer is Expired!");
+                    }
+                }
+            }
+            if flag == false {
+                msg!("Offer is not Existed!");
+                is_offer_exist_not_expired = false;
+                break;
+            }
+            if is_offer_exist_not_expired == false {
+                break;
             }
         }
 
-        if flag {
-            let offer_account_seeds = &[
-                &id().to_bytes(),
-                OFFER_CREATE_PREFIX,
-                &[offer_create.bump],
-            ];
-    
-            let offer_account_signer = &[&offer_account_seeds[..]];
-            //transfer nft to user
-            let authority_accounts = SetAuthority {
-                current_authority: offer_create.to_account_info(),
-                account_or_mint: nft_token_account.to_account_info(),
-            };
-            let authority_ctx = CpiContext::new_with_signer(
-                token_program.to_account_info(),
-                authority_accounts,
-                offer_account_signer,
-            );
-            token::set_authority(
-                authority_ctx,
-                AuthorityType::AccountOwner,
-                Some(signer.key()),
-            )?;
+        if is_offer_exist_not_expired == false {
+            return Err(NFTDEXError::OfferIDORExpirationError.into());
+        }
 
-            offer_create.offers.retain(|x| x.offer_id != offer_id);offer_supply.offers.retain(|x| x.offer_id != offer_id);
-            offer_demand.offers.retain(|x| x.offer_id != offer_id);
+        
+        let mut target_supply_items: Vec<&mut OfferSupplyItem> = Vec::new();
+        let mut target_demand_items: Vec<&mut OfferDemandItem> = Vec::new();
+
+        for offer_supply_item in offer_supply.offers.iter_mut() {
+            if offer_ids.iter().any(|&i| i == offer_supply_item.offer_id) {
+                target_supply_items.push(offer_supply_item);
+            }
+        }
+        for offer_demand_item in offer_demand.offers.iter_mut() {
+            if offer_ids.iter().any(|&i| i == offer_demand_item.offer_id) {
+                target_demand_items.push(offer_demand_item);
+            }
+        }
+
+        if target_supply_items.len() != target_demand_items.len() {
+            return Err(NFTDEXError::OfferNotValidate.into());
+        }
+
+        for offer_supply_item in target_supply_items.iter_mut() {
+            let mut flag: bool = false;
+            for offer_demand_item in target_demand_items.iter_mut() {
+                if offer_supply_item.nft_id == offer_demand_item.nft_id {
+                    flag = true;
+                }
+            }
+            if flag == false {
+                return Err(NFTDEXError::OfferNotValidate.into());
+            }
+        }
+
+        let offer_account_seeds = &[
+            &id().to_bytes(),
+            OFFER_CREATE_PREFIX,
+            &[offer_create.bump],
+        ];
+
+        let offer_account_signer = &[&offer_account_seeds[..]];
+        //transfer nft to user
+        let authority_accounts = SetAuthority {
+            current_authority: offer_create.to_account_info(),
+            account_or_mint: nft_token_account.to_account_info(),
+        };
+        let authority_ctx = CpiContext::new_with_signer(
+            token_program.to_account_info(),
+            authority_accounts,
+            offer_account_signer,
+        );
+        token::set_authority(
+            authority_ctx,
+            AuthorityType::AccountOwner,
+            Some(signer.key()),
+        )?;
+        for offer_id in offer_ids {
+            offer_create.offers.retain(|x| x.offer_id == offer_id);
+            offer_supply.offers.retain(|x| x.offer_id == offer_id);
+            offer_demand.offers.retain(|x| x.offer_id == offer_id);
         }
 
         Ok(())
@@ -415,5 +492,37 @@ pub struct TradeCreate<'info> {
     )]
     pub nft_token_account: Account<'info, TokenAccount>,
 
-    pub token_program: Program<'info, Token>
+    pub token_program: Program<'info, Token>,
+
+    pub clock: Sysvar<'info, Clock>
+}
+
+#[derive(Accounts)]
+pub struct FormatAccounts<'info> {
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_CREATE_PREFIX],
+        bump = offer_create.bump,
+    )]
+    pub offer_create: Account<'info,OfferCreateAccount>,
+
+    /// The offer supply account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_SUPPLY_PREFIX],
+        bump = offer_supply.bump,
+    )]
+    pub offer_supply: Account<'info,OfferSupplyAccount>,
+
+    /// The offer demand account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(),OFFER_DEMAND_PREFIX],
+        bump = offer_demand.bump,
+    )]
+    pub offer_demand: Account<'info,OfferDemandAccount>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut, signer)]
+    pub owner: AccountInfo<'info>,
 }

@@ -12,4 +12,8 @@ pub enum NFTDEXError {
     InvalidNFTAccountMint,
     #[msg("The provided NFT token account does not have the token")]
     NFTAccountEmpty,
+    #[msg("The offer Id is not exist or expired")]
+    OfferIDORExpirationError,
+    #[msg("Is not validated")]
+    OfferNotValidate
 }
