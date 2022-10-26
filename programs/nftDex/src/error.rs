@@ -15,5 +15,7 @@ pub enum NFTDEXError {
     #[msg("The offer Id is not exist or expired")]
     OfferIDORExpirationError,
     #[msg("Is not validated")]
-    OfferNotValidate
+    OfferNotValidate,
+    #[msg("NFT is not exist in the account")]
+    NFTNotExist
 }

@@ -22,6 +22,20 @@ pub struct OfferDemandAccount {
     pub bump: u8,
 }
 
+#[account]
+pub struct MarketplaceAccount {
+    pub items: Vec<MarketplaceItem>,
+    pub owner: Pubkey,
+    pub bump: u8,
+}
+
+#[account]
+pub struct DelegateAuctioner {
+    pub owner: Pubkey,
+    pub bump: u8,
+}
+
+
 #[derive(Debug, AnchorDeserialize, AnchorSerialize, Default, Clone)]
 pub struct OfferItem {
     pub offer_id: u32,
@@ -39,6 +53,12 @@ pub struct OfferSupplyItem {
 #[derive(Debug, AnchorDeserialize, AnchorSerialize, Default, Clone)]
 pub struct OfferDemandItem {
     pub offer_id: u32,
+    pub nft_id: Pubkey,
+    pub owner: Pubkey,
+}
+
+#[derive(Debug, AnchorDeserialize, AnchorSerialize, Default, Clone)]
+pub struct MarketplaceItem {
     pub nft_id: Pubkey,
     pub owner: Pubkey,
 }
