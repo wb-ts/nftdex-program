@@ -6,17 +6,15 @@ pub mod state;
 use error::*;
 use state::*;
 
-use anchor_spl::token::{self, Mint, SetAuthority, Transfer, Token, TokenAccount};
+use anchor_spl::token::{self, Mint, SetAuthority, Token, TokenAccount};
 use spl_token::instruction::AuthorityType;
-
 
 const OFFER_CREATE_PREFIX: &[u8] = b"offer_create";
 const OFFER_SUPPLY_PREFIX: &[u8] = b"offer_supply";
 const OFFER_DEMAND_PREFIX: &[u8] = b"offer_demand";
 const MARKETPLACE_PREFIX: &[u8] = b"marketplace";
-const DELEGATE_AUCTIONER_PREFIX: &[u8] = b"delegate_auctioner";
 
-declare_id!("DS1ewXxTshybgCA2rW7gqC1Snz4fDZtBFXmJQQ5ZU1mh");
+declare_id!("6YcHjsGZnTZqd7A2SeyvjBNJ5BNADBvLVuxV2yo1Nu3T");
 
 #[program]
 pub mod nft_dex {
@@ -75,19 +73,6 @@ pub mod nft_dex {
         Ok(())
     }
 
-    pub fn initialize_delegate_auctioner(
-        ctx: Context<InitializeDelegateAuctioner>,
-        delegate_auctioner_bump: u8,
-    ) -> Result<()> {
-        let owner = &mut ctx.accounts.owner;
-        let delegate_auctioner = &mut ctx.accounts.delegate_auctioner;
-
-        delegate_auctioner.owner = owner.to_account_info().key();
-        delegate_auctioner.bump = delegate_auctioner_bump;
-
-        Ok(())
-    }
-
     pub fn format_accounts(ctx: Context<FormatAccounts>) -> Result<()> {
         let offer_create = &mut ctx.accounts.offer_create;
         let offer_supply = &mut ctx.accounts.offer_supply;
@@ -108,54 +93,51 @@ pub mod nft_dex {
         Ok(())
     }
 
-    pub fn set_active(
-        ctx: Context<SetActiveNFT>,
-        nft_id: Pubkey
-    ) -> Result<()> {
+    pub fn set_active(ctx: Context<SetActiveNFT>, nft_id: Pubkey) -> Result<()> {
         let marketplace = &mut ctx.accounts.marketplace;
-        let nft_token_account = &mut ctx.accounts.nft_token_account;
-        let token_program = &mut ctx.accounts.token_program;
+        let user_nft_token_account = &mut ctx.accounts.user_nft_token_account;
         let owner = &mut ctx.accounts.owner;
-        let delegate_auctioner = &mut ctx.accounts.delegate_auctioner;
+        let token_program = &mut ctx.accounts.token_program;
 
         let marketplace_item = MarketplaceItem {
             nft_id,
-            owner: owner.key()
+            owner: owner.key(),
         };
 
         marketplace.items.push(marketplace_item);
 
+        //transfer nft ownership to vault
         let authority_accounts = SetAuthority {
             current_authority: owner.to_account_info(),
-            account_or_mint: nft_token_account.to_account_info(),
+            account_or_mint: user_nft_token_account.to_account_info(),
         };
 
         let authority_ctx = CpiContext::new(token_program.to_account_info(), authority_accounts);
         token::set_authority(
             authority_ctx,
             AuthorityType::AccountOwner,
-            Some(delegate_auctioner.key()),
+            Some(marketplace.key()),
         )?;
 
         Ok(())
     }
 
-    pub fn set_inactive(
-        ctx: Context<SetActiveNFT>,
-        nft_id: Pubkey
-    ) -> Result<()> {
+    pub fn set_inactive(ctx: Context<SetInactiveNFT>, nft_id: Pubkey) -> Result<()> {
         let offer_create = &mut ctx.accounts.offer_create;
         let offer_supply = &mut ctx.accounts.offer_supply;
         let offer_demand = &mut ctx.accounts.offer_demand;
         let marketplace = &mut ctx.accounts.marketplace;
-        let nft_token_account = &mut ctx.accounts.nft_token_account;
-        let token_program = &mut ctx.accounts.token_program;
+        let user_nft_token_account = &mut ctx.accounts.user_nft_token_account;
         let owner = &mut ctx.accounts.owner;
-        let delegate_auctioner = &mut ctx.accounts.delegate_auctioner;
+        let token_program = &mut ctx.accounts.token_program;
 
-        let mut flag : bool = true;
+        let mut flag: bool = true;
 
-        if marketplace.items.iter().any(| item| item.nft_id == nft_id) {
+        if marketplace
+            .items
+            .iter()
+            .any(|item| item.nft_id == nft_id && item.owner == owner.key())
+        {
             flag = false;
         }
 
@@ -163,23 +145,22 @@ pub mod nft_dex {
             return Err(NFTDEXError::NFTNotExist.into());
         }
 
-        let delegate_auctioner_seeds = &[
-            &id().to_bytes(),
-            DELEGATE_AUCTIONER_PREFIX,
-            &[delegate_auctioner.bump]
-        ];
+        marketplace.items.retain(|x| x.nft_id != nft_id);
 
-        let delegate_auctioner_signer = &[&delegate_auctioner_seeds[..]];
+        let marketplace_account_seeds =
+            &[&id().to_bytes(), MARKETPLACE_PREFIX, &[marketplace.bump]];
+
+        let marketplace_account_signer = &[&marketplace_account_seeds[..]];
 
         let authority_accounts = SetAuthority {
-            current_authority: delegate_auctioner.to_account_info(),
-            account_or_mint: nft_token_account.to_account_info(),
+            current_authority: marketplace.to_account_info(),
+            account_or_mint: user_nft_token_account.to_account_info(),
         };
 
         let authority_ctx = CpiContext::new_with_signer(
-            token_program.to_account_info(), 
-            authority_accounts, 
-            delegate_auctioner_signer
+            token_program.to_account_info(),
+            authority_accounts,
+            marketplace_account_signer,
         );
         token::set_authority(
             authority_ctx,
@@ -187,15 +168,18 @@ pub mod nft_dex {
             Some(owner.key()),
         )?;
 
-        marketplace.items.retain(|x| x.nft_id != nft_id);
         for offer_supply_item in offer_supply.offers.iter() {
             if offer_supply_item.nft_id == nft_id {
-                offer_create.offers.retain(|x| x.offer_id != offer_supply_item.offer_id);
+                offer_create
+                    .offers
+                    .retain(|x| x.offer_id != offer_supply_item.offer_id);
             }
         }
         for offer_demand_item in offer_demand.offers.iter() {
             if offer_demand_item.nft_id == nft_id {
-                offer_create.offers.retain(|x| x.offer_id != offer_demand_item.offer_id);
+                offer_create
+                    .offers
+                    .retain(|x| x.offer_id != offer_demand_item.offer_id);
             }
         }
         offer_supply.offers.retain(|x| x.nft_id != nft_id);
@@ -203,7 +187,6 @@ pub mod nft_dex {
 
         Ok(())
     }
-
 
     pub fn offer_create(
         ctx: Context<OfferCreate>,
@@ -218,10 +201,9 @@ pub mod nft_dex {
         let owner = &mut ctx.accounts.owner;
         let clock = &ctx.accounts.clock;
 
-        
         for nft_id in &nft_supply_ids {
-            let mut flag : bool = true;
-            if marketplace.items.iter().any(| item| item.nft_id == *nft_id) {
+            let mut flag: bool = true;
+            if marketplace.items.iter().any(|item| item.nft_id == *nft_id) {
                 flag = false;
             }
             if flag {
@@ -230,8 +212,8 @@ pub mod nft_dex {
         }
 
         for nft_id in &nft_demand_ids {
-            let mut flag : bool = true;
-            if marketplace.items.iter().any(| item| item.nft_id == *nft_id) {
+            let mut flag: bool = true;
+            if marketplace.items.iter().any(|item| item.nft_id == *nft_id) {
                 flag = false;
             }
             if flag {
@@ -250,7 +232,6 @@ pub mod nft_dex {
 
         offer_create.offers.push(offer_item);
         offer_create.index = index;
-
 
         for nft_supply_id in nft_supply_ids.iter() {
             let offer_supply_item = OfferSupplyItem {
@@ -279,12 +260,14 @@ pub mod nft_dex {
         let signer = &mut ctx.accounts.owner;
 
         for offer_item in offer_create.offers.iter() {
-
-            if offer_ids.iter().any(|&offer_id| offer_id == offer_item.offer_id) {
+            if offer_ids
+                .iter()
+                .any(|&offer_id| offer_id == offer_item.offer_id)
+            {
                 if offer_item.creator != signer.to_account_info().key() {
                     return Err(NFTDEXError::OfferNotCreator.into());
                 }
-           }
+            }
         }
 
         for offer_id in offer_ids {
@@ -329,7 +312,7 @@ pub mod nft_dex {
         let offer_supply = &mut ctx.accounts.offer_supply;
         let offer_demand = &mut ctx.accounts.offer_demand;
         let clock = &ctx.accounts.clock;
-    
+
         let mut is_offer_exist_not_expired: bool = true;
 
         for offer_id in offer_ids.iter() {
@@ -384,19 +367,16 @@ pub mod nft_dex {
                 return Err(NFTDEXError::OfferNotValidate.into());
             }
         }
-        
+
         Ok(())
     }
 
-    pub fn transfer_nft(
-        ctx: Context<TransferNFT>,
-        nft_id: Pubkey
-    ) -> Result<()> {
+    pub fn transfer_nft(ctx: Context<TransferNFT>, nft_id: Pubkey) -> Result<()> {
         let offer_demand = &mut ctx.accounts.offer_demand;
-        let nft_token_account = &mut ctx.accounts.nft_token_account;
+        let marketplace = &mut ctx.accounts.marketplace;
         let token_program = &mut ctx.accounts.token_program;
-        let delegate_auctioner = &mut ctx.accounts.delegate_auctioner;
-        let new_nft_token_account = &mut ctx.accounts.new_nft_token_account;
+        let user_nft_token_account = &mut ctx.accounts.user_nft_token_account;
+        let demand_user = &mut ctx.accounts.demand_user;
         let mut flag: bool = false;
 
         if offer_demand.offers.iter().any(|i| i.nft_id == nft_id) {
@@ -407,28 +387,26 @@ pub mod nft_dex {
             return Err(NFTDEXError::NFTNotExist.into());
         }
 
-        let delegate_auctioner_seeds = &[
-            &id().to_bytes(),
-            DELEGATE_AUCTIONER_PREFIX,
-            &[delegate_auctioner.bump]
-        ];
+        let marketplace_account_seeds =
+            &[&id().to_bytes(), MARKETPLACE_PREFIX, &[marketplace.bump]];
 
-        let delegate_auctioner_signer = &[&delegate_auctioner_seeds[..]];
+        let marketplace_account_signer = &[&marketplace_account_seeds[..]];
 
-
-        let transfer_accounts = Transfer {
-            from: nft_token_account.to_account_info(),
-            to: new_nft_token_account.to_account_info(),
-            authority: delegate_auctioner.to_account_info()
+        let authority_accounts = SetAuthority {
+            current_authority: marketplace.to_account_info(),
+            account_or_mint: user_nft_token_account.to_account_info(),
         };
 
-
-        let transfer_ctx = CpiContext::new_with_signer(
-            token_program.to_account_info(), 
-            transfer_accounts,
-            delegate_auctioner_signer
+        let authority_ctx = CpiContext::new_with_signer(
+            token_program.to_account_info(),
+            authority_accounts,
+            marketplace_account_signer,
         );
-        token::transfer(transfer_ctx, 1)?;
+        token::set_authority(
+            authority_ctx,
+            AuthorityType::AccountOwner,
+            Some(demand_user.key()),
+        )?;
 
         Ok(())
     }
@@ -511,27 +489,35 @@ pub struct InitializeDemandAccount<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(bump:u8)]
-pub struct InitializeDelegateAuctioner<'info> {
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
+pub struct SetActiveNFT<'info> {
+    /// The marketplace account
     #[account(
-        init,
-        payer = owner,
-        seeds = [&id().to_bytes(),DELEGATE_AUCTIONER_PREFIX],
-        bump,
-        space = 128
+        mut,
+        seeds = [&id().to_bytes(),MARKETPLACE_PREFIX],
+        bump = marketplace.bump,
     )]
-    pub delegate_auctioner: Account<'info, DelegateAuctioner>,
+    pub marketplace: Account<'info, MarketplaceAccount>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    pub nft_mint: Box<Account<'info, Mint>>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary
     #[account(mut, signer)]
     pub owner: AccountInfo<'info>,
 
-    pub system_program: Program<'info, System>,
+    /// The token account from the owner
+    #[account(
+        mut,
+        has_one = owner @ NFTDEXError::InvalidNFTOwner,
+        constraint = user_nft_token_account.mint == nft_mint.key() @ NFTDEXError::InvalidNFTAccountMint,
+        constraint = user_nft_token_account.amount == 1 @ NFTDEXError::NFTAccountEmpty,
+    )]
+    pub user_nft_token_account: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
-pub struct SetActiveNFT<'info> {
+pub struct SetInactiveNFT<'info> {
     /// The offer account
     #[account(
         mut,
@@ -558,38 +544,30 @@ pub struct SetActiveNFT<'info> {
     /// The marketplace account
     #[account(
         mut,
-        seeds = [&id().to_bytes(), MARKETPLACE_PREFIX],
+        seeds = [&id().to_bytes(),MARKETPLACE_PREFIX],
         bump = marketplace.bump,
     )]
     pub marketplace: Account<'info, MarketplaceAccount>,
-
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
-    #[account(mut, signer)]
-    pub owner: AccountInfo<'info>,
 
     pub nft_mint: Box<Account<'info, Mint>>,
 
     /// The token account from the owner
     #[account(
         mut,
-        constraint = nft_token_account.mint == nft_mint.key() @ NFTDEXError::InvalidNFTAccountMint,
-        constraint = nft_token_account.amount == 1 @ NFTDEXError::NFTAccountEmpty,
+        constraint = user_nft_token_account.mint == nft_mint.key() @ NFTDEXError::InvalidNFTAccountMint,
+        constraint = user_nft_token_account.amount == 1 @ NFTDEXError::NFTAccountEmpty,
     )]
-    pub nft_token_account: Account<'info, TokenAccount>,
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
-    #[account(
-        mut,
-        seeds = [&id().to_bytes(),DELEGATE_AUCTIONER_PREFIX],
-        bump = delegate_auctioner.bump
-    )]
-    pub delegate_auctioner: Account<'info, DelegateAuctioner>,
+    pub user_nft_token_account: Account<'info, TokenAccount>,
 
-    pub token_program: Program<'info, Token>
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut, signer)]
+    pub owner: AccountInfo<'info>,
+
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
 pub struct TransferNFT<'info> {
-
     /// The offer demand account
     #[account(
         mut,
@@ -598,33 +576,29 @@ pub struct TransferNFT<'info> {
     )]
     pub offer_demand: Account<'info, OfferDemandAccount>,
 
+    /// The marketplace account
+    #[account(
+        mut,
+        seeds = [&id().to_bytes(), MARKETPLACE_PREFIX],
+        bump = marketplace.bump,
+    )]
+    pub marketplace: Account<'info, MarketplaceAccount>,
+
     /// CHECK:` doc comment explaining why no checks through types are necessary.
-    #[account(mut, signer)]
+    #[account(mut, signer )]
     pub owner: AccountInfo<'info>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut)]
+    pub demand_user: AccountInfo<'info>,
 
     pub nft_mint: Box<Account<'info, Mint>>,
 
     /// The token account from the owner
-    #[account(
-        mut,
-        constraint = nft_token_account.mint == nft_mint.key() @ NFTDEXError::InvalidNFTAccountMint,
-        constraint = nft_token_account.amount == 1 @ NFTDEXError::NFTAccountEmpty,
-    )]
-    pub nft_token_account: Account<'info, TokenAccount>,
-
-    /// The token account from the new owner
     #[account(mut)]
-    pub new_nft_token_account: Account<'info, TokenAccount>,
+    pub user_nft_token_account: Account<'info, TokenAccount>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
-    #[account(
-        mut,
-        seeds = [&id().to_bytes(),DELEGATE_AUCTIONER_PREFIX],
-        bump = delegate_auctioner.bump,
-    )]
-    pub delegate_auctioner: Account<'info, DelegateAuctioner>,
-
-    pub token_program: Program<'info, Token>
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]

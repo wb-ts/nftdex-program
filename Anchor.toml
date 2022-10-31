@@ -1,13 +1,13 @@
 [features]
 seeds = false
-[programs.devnet]
-nft_dex = "DS1ewXxTshybgCA2rW7gqC1Snz4fDZtBFXmJQQ5ZU1mh"
+[programs.localnet]
+nft_dex = "6YcHjsGZnTZqd7A2SeyvjBNJ5BNADBvLVuxV2yo1Nu3T"
 
 [registry]
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "/home/wb-ts/.config/solana/id.json"
 
 [scripts]

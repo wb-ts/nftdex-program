@@ -1,7 +1,7 @@
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
 import { NftDex } from "../target/types/nft_dex";
-import { createMint, TOKEN_PROGRAM_ID, mintTo, getAssociatedTokenAddress, createAssociatedTokenAccount } from '@solana/spl-token';
+import { createMint, TOKEN_PROGRAM_ID, mintTo, getAssociatedTokenAddress, createAssociatedTokenAccount, getOrCreateAssociatedTokenAccount } from '@solana/spl-token';
 
 describe("nftDex", async () => {
     // Configure the client to use the local cluster.
@@ -133,22 +133,6 @@ describe("nftDex", async () => {
         console.log("Your transaction signature", tx);
     });
 
-    it("DelegateAuctioner Is initialized!", async () => {
-
-        const accountInfo = await provider.connection.getAccountInfo(delegate_auctioner[0]);
-        // DelegateAuctioner is already Initialized;
-        if (accountInfo && accountInfo.data.length) return;
-
-        const tx = await program.rpc.initializeDelegateAuctioner(delegate_auctioner[1], {
-            accounts: {
-                delegateAuctioner: delegate_auctioner[0],
-                owner: provider.wallet.publicKey,
-                systemProgram: anchor.web3.SystemProgram.programId
-            }
-        });
-        console.log("Your transaction signature", tx);
-    });
-
     let nft_addresses: anchor.web3.PublicKey[] = [];
 
     interface offerType {
@@ -244,21 +228,17 @@ describe("nftDex", async () => {
 
     it("SetActive", async () => {
         for (let i = 0; i < nft_addresses.length; i++) {
-            const nft_token_address = await getAssociatedTokenAddress(
+            const user_nft_token_address = await getAssociatedTokenAddress(
                 nft_addresses[i],
                 nftOwnUsers[i].publicKey
-            )
+            );
             const tx = await program.rpc.setActive(nft_addresses[i], {
                 accounts: {
-                    offerCreate: offer_create_account[0],
-                    offerSupply: offer_supply_account[0],
-                    offerDemand: offer_demand_account[0],
                     marketplace: marketplace_account[0],
                     nftMint: nft_addresses[i],
-                    nftTokenAccount: nft_token_address,
+                    userNftTokenAccount: user_nft_token_address,
                     tokenProgram: TOKEN_PROGRAM_ID,
                     owner: nftOwnUsers[i].publicKey,
-                    delegateAuctioner: delegate_auctioner[0]
                 },
                 signers: [
                     nftOwnUsers[i]
@@ -269,10 +249,10 @@ describe("nftDex", async () => {
     });
 
     it("SetInactive", async () => {
-        const nft_token_address = await getAssociatedTokenAddress(
+        const user_nft_token_address = await getAssociatedTokenAddress(
             nft_addresses[4],
             nftOwnUsers[4].publicKey
-        )
+        );
         const tx = await program.rpc.setInactive(nft_addresses[4], {
             accounts: {
                 offerCreate: offer_create_account[0],
@@ -280,16 +260,15 @@ describe("nftDex", async () => {
                 offerDemand: offer_demand_account[0],
                 marketplace: marketplace_account[0],
                 nftMint: nft_addresses[4],
-                nftTokenAccount: nft_token_address,
+                userNftTokenAccount: user_nft_token_address,
                 tokenProgram: TOKEN_PROGRAM_ID,
                 owner: nftOwnUsers[4].publicKey,
-                delegateAuctioner: delegate_auctioner[0]
             },
             signers: [
                 nftOwnUsers[4]
             ]
         });
-        console.log("Set Active NFT_", nft_addresses[4].toBase58(), " Transaction:", tx);
+        console.log("Set Inactive NFT_", nft_addresses[4].toBase58(), " Transaction:", tx);
     });
 
     it("OfferCreate!", async () => {
@@ -347,7 +326,7 @@ describe("nftDex", async () => {
     it("TradeCreate", async () => {
         const offer_ids = [1, 2, 3];
         try {
-            await program.rpc.tradeCreateValidate(offer_ids, {
+            const tx_validate = await program.rpc.tradeCreateValidate(offer_ids, {
                 accounts: {
                     offerCreate: offer_create_account[0],
                     offerSupply: offer_supply_account[0],
@@ -356,6 +335,8 @@ describe("nftDex", async () => {
                     clock: anchor.web3.SYSVAR_CLOCK_PUBKEY
                 }
             });
+
+            console.log("Validate Transaction: ", tx_validate);
 
             interface transferNftsType {
                 nft_id: anchor.web3.PublicKey,
@@ -379,39 +360,38 @@ describe("nftDex", async () => {
                         nft_id: offers[offer_ids[i] - 1].nft_demand_ids[demand_nft_index],
                         supply_user_wallet: supply_user_wallet,
                         demand_user_wallet: offers[offer_ids[i] - 1].supply_user,
-                        
+
                     }];
                 };
             }
 
             for (let i = 0; i < transfer_nfts.length; i++) {
-                const nft_token_address = await getAssociatedTokenAddress(
+
+                const user_nft_token_address = await getAssociatedTokenAddress(
                     transfer_nfts[i].nft_id,
                     transfer_nfts[i].supply_user_wallet.publicKey
-                )
-                const new_nft_token_address = await createAssociatedTokenAccount(
-                    provider.connection,
-                    payer,
-                    transfer_nfts[i].nft_id,
-                    transfer_nfts[i].demand_user_wallet.publicKey
                 );
+
                 transaction.add(
                     program.instruction.transferNft(transfer_nfts[i].nft_id, {
                         accounts: {
                             offerDemand: offer_demand_account[0],
                             nftMint: transfer_nfts[i].nft_id,
-                            nftTokenAccount: nft_token_address,
-                            newNftTokenAccount: new_nft_token_address,
-                            delegateAuctioner: delegate_auctioner[0],
+                            userNftTokenAccount: user_nft_token_address,
                             tokenProgram: TOKEN_PROGRAM_ID,
+                            demandUser: transfer_nfts[i].demand_user_wallet.publicKey,
+                            marketplace: marketplace_account[0],
                             owner: provider.wallet.publicKey
                         }
-                     })
+                    })
                 );
             }
-
+            
             const tx = await program.provider.send(transaction);
-            console.log("TradeCreate Trasaction Signature:", tx);
+
+            console.log("Transfer_NFTs Transaction Signature: ", tx);
+            
+
         }
         catch (err) {
             throw err;
@@ -419,3 +399,4 @@ describe("nftDex", async () => {
 
     });
 });
+
