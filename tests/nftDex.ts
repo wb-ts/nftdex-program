@@ -512,7 +512,7 @@ describe("nftDex", async () => {
             );
 
             transaction.add(
-                program.instruction.tradeCreate({
+                program.instruction.traderCreate({
                     accounts: {
                         userNftAccount: user_nft_token_account,
                         newUserNftAccount: new_user_nft_token_account,
