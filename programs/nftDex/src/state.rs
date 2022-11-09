@@ -2,56 +2,30 @@ use anchor_lang::prelude::*;
 
 #[account]
 pub struct OfferCreateAccount {
-    pub offers: Vec<OfferItem>,
+    pub wallet_id: Pubkey,
     pub owner: Pubkey,
-    pub index: u32,
-    pub bump: u8,
-}
-
-#[account]
-pub struct OfferSupplyAccount {
-    pub offers: Vec<OfferSupplyItem>,
-    pub owner: Pubkey,
-    pub bump: u8,
-}
-
-#[account]
-pub struct OfferDemandAccount {
-    pub offers: Vec<OfferDemandItem>,
-    pub owner: Pubkey,
-    pub bump: u8,
-}
-
-#[account]
-pub struct MarketplaceAccount {
-    pub items: Vec<MarketplaceItem>,
-    pub owner: Pubkey,
-    pub bump: u8,
-}
-
-#[derive(Debug, AnchorDeserialize, AnchorSerialize, Default, Clone)]
-pub struct OfferItem {
-    pub offer_id: u32,
-    pub creator: Pubkey,
+    pub supply_1: Pubkey,
+    pub supply_2: Pubkey,
+    pub supply_3: Pubkey,
+    pub supply_4: Pubkey,
+    pub supply_5: Pubkey,
+    pub demand_1: Pubkey,
+    pub demand_2: Pubkey,
+    pub demand_3: Pubkey,
+    pub demand_4: Pubkey,
+    pub demand_5: Pubkey,
+    pub timestamp: i64,
     pub created: i64,
     pub expiration: i64,
+    pub bump: u8
 }
-
-#[derive(Debug, AnchorDeserialize, AnchorSerialize, Default, Clone)]
-pub struct OfferSupplyItem {
-    pub offer_id: u32,
-    pub nft_id: Pubkey,
-}
-
-#[derive(Debug, AnchorDeserialize, AnchorSerialize, Default, Clone)]
-pub struct OfferDemandItem {
-    pub offer_id: u32,
-    pub nft_id: Pubkey,
+#[account]
+pub struct MarketplaceAccount {
     pub owner: Pubkey,
+    pub bump: u8,
 }
-
-#[derive(Debug, AnchorDeserialize, AnchorSerialize, Default, Clone)]
-pub struct MarketplaceItem {
-    pub nft_id: Pubkey,
-    pub owner: Pubkey
+#[account]
+pub struct OffersAccount {
+    pub owner: Pubkey,
+    pub bump: u8,
 }
