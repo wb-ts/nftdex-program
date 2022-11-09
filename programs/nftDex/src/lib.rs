@@ -10,7 +10,6 @@ use anchor_spl::token::{self, Mint, SetAuthority, Token, TokenAccount, Transfer}
 use spl_token::instruction::AuthorityType;
 
 const MARKETPLACE_PREFIX: &[u8] = b"marketplace";
-const OFFERS_ACCOUT_PREFIX: &[u8] = b"offers";
 const OFFER_CREATE_ACCOUT_PREFIX: &[u8] = b"offer_create";
 
 declare_id!("5v8VeEDzTYU6ESueJNwUMV3UGgTMmo4dDs19bNS1yDqb");
@@ -18,19 +17,6 @@ declare_id!("5v8VeEDzTYU6ESueJNwUMV3UGgTMmo4dDs19bNS1yDqb");
 #[program]
 pub mod nft_dex {
     use super::*;
-
-    pub fn initialize_offers_account(
-        ctx: Context<InitializeOffersAccount>,
-        offer_bump: u8,
-    ) -> Result<()> {
-        let owner = &mut ctx.accounts.owner;
-        let offers_account = &mut ctx.accounts.offers_account;
-
-        offers_account.owner = owner.to_account_info().key();
-        offers_account.bump = offer_bump;
-
-        Ok(())
-    }
 
     pub fn initialize_marketplace_account(
         ctx: Context<InitializeMarketplaceAccount>,
@@ -195,25 +181,6 @@ pub struct InitializeMarketplaceAccount<'info> {
         space = 8 + 32 + 1,
     )]
     pub marketplace: Account<'info, MarketplaceAccount>,
-
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
-    #[account(mut, signer)]
-    pub owner: AccountInfo<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-#[instruction(bump:u8)]
-pub struct InitializeOffersAccount<'info> {
-    #[account(
-        init,
-        payer = owner,
-        seeds = [&id().to_bytes(), OFFERS_ACCOUT_PREFIX],
-        bump,
-        space = 8 + 32 + 1,
-    )]
-    pub offers_account: Account<'info, OffersAccount>,
 
     /// CHECK:` doc comment explaining why no checks through types are necessary.
     #[account(mut, signer)]

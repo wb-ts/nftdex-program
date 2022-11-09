@@ -161,30 +161,6 @@ describe("nftDex", async () => {
             anchor.utils.bytes.utf8.encode('marketplace')
         ], program.programId);
 
-    let offers_account = await anchor.web3.PublicKey.findProgramAddress(
-        [
-            program.programId.toBuffer(),
-            anchor.utils.bytes.utf8.encode('offers')
-        ], program.programId);
-
-    it("OffersAccount Is initialized!", async () => {
-
-        const accountInfo = await provider.connection.getAccountInfo(offers_account[0]);
-
-        // offerDemand Account is already Initialized;
-        if (accountInfo && accountInfo.data.length) return;
-
-        const tx = await program.rpc.initializeOffersAccount(offers_account[1], {
-            accounts: {
-                offersAccount: offers_account[0],
-                owner: provider.wallet.publicKey,
-                systemProgram: anchor.web3.SystemProgram.programId
-            }
-        });
-        console.log("Your transaction signature", tx);
-
-    });
-
     it("MarketplaceAccount Is initialized!", async () => {
 
         const accountInfo = await provider.connection.getAccountInfo(marketplace_account[0]);
