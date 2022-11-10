@@ -6,10 +6,8 @@ pub mod state;
 use error::*;
 use state::*;
 
-use anchor_spl::token::{self, Mint, SetAuthority, Token, TokenAccount, Transfer};
-use spl_token::instruction::AuthorityType;
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer, Approve, Revoke};
 
-const MARKETPLACE_PREFIX: &[u8] = b"marketplace";
 const OFFER_CREATE_ACCOUT_PREFIX: &[u8] = b"offer_create";
 
 declare_id!("5v8VeEDzTYU6ESueJNwUMV3UGgTMmo4dDs19bNS1yDqb");
@@ -18,67 +16,39 @@ declare_id!("5v8VeEDzTYU6ESueJNwUMV3UGgTMmo4dDs19bNS1yDqb");
 pub mod nft_dex {
     use super::*;
 
-    pub fn initialize_marketplace_account(
-        ctx: Context<InitializeMarketplaceAccount>,
-        marketplace_bump: u8,
-    ) -> Result<()> {
-        let owner = &mut ctx.accounts.owner;
-        let marketplace = &mut ctx.accounts.marketplace;
-
-        marketplace.owner = owner.to_account_info().key();
-        marketplace.bump = marketplace_bump;
-
-        Ok(())
-    }
-
     pub fn set_active(ctx: Context<SetActiveNFT>) -> Result<()> {
-        let marketplace = &mut ctx.accounts.marketplace;
         let user_nft_account = &mut ctx.accounts.user_nft_account;
         let token_program = &mut ctx.accounts.token_program;
+        let user = &mut ctx.accounts.user;
         let owner = &mut ctx.accounts.owner;
 
-        let authority_accounts = SetAuthority {
-            current_authority: owner.to_account_info(),
-            account_or_mint: user_nft_account.to_account_info(),
+        let approve_accounts = Approve {
+            to: user_nft_account.to_account_info(),
+            delegate: owner.to_account_info(),
+            authority: user.to_account_info()
         };
 
-        let authority_ctx = CpiContext::new(token_program.to_account_info(), authority_accounts);
-        token::set_authority(
-            authority_ctx,
-            AuthorityType::AccountOwner,
-            Some(marketplace.key()),
-        )?;
+        let approve_ctx = CpiContext::new(token_program.to_account_info(), approve_accounts);
+
+        token::approve(approve_ctx, 1)?;
 
         Ok(())
     }
 
     pub fn set_inactive(ctx: Context<SetInactiveNFT>) -> Result<()> {
-        let marketplace = &mut ctx.accounts.marketplace;
         let user_nft_account = &mut ctx.accounts.user_nft_account;
         let token_program = &mut ctx.accounts.token_program;
-        let owner = &mut ctx.accounts.owner;
+        let user = &mut ctx.accounts.user;
 
-        let marketplace_account_seeds =
-            &[&id().to_bytes(), MARKETPLACE_PREFIX, &[marketplace.bump]];
-
-        let marketplace_account_signer = &[&marketplace_account_seeds[..]];
-
-        let authority_accounts = SetAuthority {
-            current_authority: marketplace.to_account_info(),
-            account_or_mint: user_nft_account.to_account_info(),
+        let approve_accounts = Revoke {
+            source: user_nft_account.to_account_info(),
+            authority: user.to_account_info()
         };
 
-        let authority_ctx = CpiContext::new_with_signer(
-            token_program.to_account_info(),
-            authority_accounts,
-            marketplace_account_signer,
-        );
-        token::set_authority(
-            authority_ctx,
-            AuthorityType::AccountOwner,
-            Some(owner.key()),
-        )?;
+        let approve_ctx = CpiContext::new(token_program.to_account_info(), approve_accounts);
 
+        token::revoke(approve_ctx)?;
+        
         Ok(())
     }
 
@@ -91,10 +61,10 @@ pub mod nft_dex {
         bump: u8
     ) -> Result<()> {
         let offer_create = &mut ctx.accounts.offer_create;
-        let owner = &mut ctx.accounts.owner;
+        let user = &mut ctx.accounts.user;
         let clock = &ctx.accounts.clock;
 
-        offer_create.wallet_id = owner.to_account_info().key();
+        offer_create.wallet_id = user.to_account_info().key();
         offer_create.owner = id().key();
         offer_create.supply_1 = nft_supply_ids[0];
         offer_create.supply_2 = nft_supply_ids[1];
@@ -140,23 +110,18 @@ pub mod nft_dex {
 
         let user_nft_account = &mut ctx.accounts.user_nft_account;
         let new_user_nft_account = &mut ctx.accounts.new_user_nft_account;
-        let marketplace = &mut ctx.accounts.marketplace;
         let token_program = &ctx.accounts.token_program;
-
-        let marketplace_account_seeds = &[&id().to_bytes(), MARKETPLACE_PREFIX, &[marketplace.bump]];
-
-        let marketplace_account_signer = &[&marketplace_account_seeds[..]];
+        let owner = &mut ctx.accounts.owner;
 
         let transfer_accounts = Transfer {
             from: user_nft_account.to_account_info(),
             to: new_user_nft_account.to_account_info(),
-            authority: marketplace.to_account_info()
+            authority: owner.to_account_info()
         };
 
-        let transfer_ctx = CpiContext::new_with_signer(
+        let transfer_ctx = CpiContext::new(
             token_program.to_account_info(),
-            transfer_accounts,
-            marketplace_account_signer,
+            transfer_accounts
         );
 
         token::transfer(
@@ -171,35 +136,13 @@ pub mod nft_dex {
 }
 
 #[derive(Accounts)]
-#[instruction(bump:u8)]
-pub struct InitializeMarketplaceAccount<'info> {
-    #[account(
-        init,
-        payer = owner,
-        seeds = [&id().to_bytes(),MARKETPLACE_PREFIX],
-        bump,
-        space = 8 + 32 + 1,
-    )]
-    pub marketplace: Account<'info, MarketplaceAccount>,
-
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
-    #[account(mut, signer)]
-    pub owner: AccountInfo<'info>,
-
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
 pub struct SetActiveNFT<'info> {
-    /// The marketplace account
-    #[account(
-        mut,
-        seeds = [&id().to_bytes(), MARKETPLACE_PREFIX],
-        bump = marketplace.bump
-    )]
-    pub marketplace: Account<'info, MarketplaceAccount>,
-
+    
     pub nft_mint: Box<Account<'info, Mint>>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary
+    #[account(mut, signer)]
+    pub user: AccountInfo<'info>,
 
     /// CHECK:` doc comment explaining why no checks through types are necessary
     #[account(mut, signer)]
@@ -208,7 +151,6 @@ pub struct SetActiveNFT<'info> {
     /// The token account from the owner
     #[account(
         mut,
-        has_one = owner @ NFTDEXError::InvalidNFTOwner,
         constraint = user_nft_account.mint == nft_mint.key() @ NFTDEXError::InvalidNFTAccountMint,
         constraint = user_nft_account.amount == 1 @ NFTDEXError::NFTAccountEmpty,
     )]
@@ -219,13 +161,6 @@ pub struct SetActiveNFT<'info> {
 
 #[derive(Accounts)]
 pub struct SetInactiveNFT<'info> {
-    /// The marketplace account
-    #[account(
-        mut,
-        seeds = [&id().to_bytes(), MARKETPLACE_PREFIX],
-        bump = marketplace.bump
-    )]
-    pub marketplace: Account<'info, MarketplaceAccount>,
 
     pub nft_mint: Box<Account<'info, Mint>>,
 
@@ -236,9 +171,14 @@ pub struct SetInactiveNFT<'info> {
         constraint = user_nft_account.amount == 1 @ NFTDEXError::NFTAccountEmpty,
     )]
     pub user_nft_account: Account<'info, TokenAccount>,
+    
     /// CHECK:` doc comment explaining why no checks through types are necessary.
-    #[account(mut)]
+    #[account(mut, signer)]
     pub owner: AccountInfo<'info>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut, signer)]
+    pub user: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
 }
@@ -264,7 +204,7 @@ pub struct OfferCreate<'info> {
     
     /// CHECK:` doc comment explaining why no checks through types are necessary.
     #[account(mut)]
-    pub owner: AccountInfo<'info>,
+    pub user: AccountInfo<'info>,
 
     /// CHECK:` doc comment explaining why no checks through types are necessary.
     #[account(mut, signer)]
@@ -303,13 +243,9 @@ pub struct TradeCreate<'info> {
     #[account(mut)]
     pub new_user_nft_account: Account<'info, TokenAccount>,
 
-    /// The marketplace account
-    #[account(
-        mut,
-        seeds = [&id().to_bytes(), MARKETPLACE_PREFIX],
-        bump = marketplace.bump
-    )]
-    pub marketplace: Account<'info, MarketplaceAccount>,
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut, signer)]
+    pub owner: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
 

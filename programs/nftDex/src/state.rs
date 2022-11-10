@@ -19,8 +19,3 @@ pub struct OfferCreateAccount {
     pub expiration: i64,
     pub bump: u8
 }
-#[account]
-pub struct MarketplaceAccount {
-    pub owner: Pubkey,
-    pub bump: u8,
-}
