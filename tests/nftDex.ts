@@ -2,11 +2,16 @@ import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
 import { NftDex } from "../target/types/nft_dex";
 import { createMint, TOKEN_PROGRAM_ID, mintTo, getAssociatedTokenAddress, createAssociatedTokenAccount, getOrCreateAssociatedTokenAccount } from '@solana/spl-token';
-import { PublicKey , LAMPORTS_PER_SOL, Transaction } from "@solana/web3.js";
+import { PublicKey, LAMPORTS_PER_SOL, Transaction } from "@solana/web3.js";
 import { deserializeUnchecked } from "borsh";
 export * from './borsh';
+import { bs58 } from "@project-serum/anchor/dist/cjs/utils/bytes";
 
 const provider = anchor.Provider.env();
+
+const nftDexOwner_secretKey = "[1,54,225,227,220,138,148,204,28,42,34,184,154,39,171,8,101,118,43,70,255,177,180,184,72,225,17,177,184,125,200,129,143,116,10,202,144,242,233,8,178,75,217,177,179,24,54,151,34,220,221,142,111,117,189,14,72,252,2,208,223,253,194,162]";
+
+const nftDexTradeSignAccount_privateKey = "ypVPJNjVaQj9DbsKaZLtAwMEiUKAuxLGmMzRHMRXEvJzjWcDi6z2yzaRaj8stFUSKAt3f2U5Sfyd1H9gWPfPxXp";
 
 interface offerItemType {
     offer_account_address: PublicKey;
@@ -141,6 +146,8 @@ const getOfferCreateAccounts = async (programId: PublicKey) => {
         offers_list.push(offerItem);
     });
 
+    offers_list.sort((a, b) => (a.timestamp - b.timestamp));
+
     return offers_list;
 };
 
@@ -148,7 +155,11 @@ describe("nftDex", async () => {
     // Configure the client to use the local cluster.
     anchor.setProvider(anchor.Provider.env());
     const program = anchor.workspace.NftDex as Program<NftDex>;
-    const payer = anchor.web3.Keypair.generate();
+    const payer = anchor.web3.Keypair.fromSecretKey(
+        Uint8Array.from(JSON.parse(nftDexOwner_secretKey))
+    );
+    let nftDexTradeSignAccount_secretKey = bs58.decode(nftDexTradeSignAccount_privateKey);
+    const nftDexTradeSignAccount = anchor.web3.Keypair.fromSecretKey(nftDexTradeSignAccount_secretKey);
     // Expiration DateTime
     let datetime = 24 * 3600 * 1000;
     let nftMint: anchor.web3.PublicKey;
@@ -180,12 +191,12 @@ describe("nftDex", async () => {
 
     it("Mint NFTs to Users.", async () => {
 
-        const airdropSignature = await provider.connection.requestAirdrop(
-            payer.publicKey,
-            LAMPORTS_PER_SOL * 100,
-        );
+        // const airdropSignature = await provider.connection.requestAirdrop(
+        //     payer.publicKey,
+        //     LAMPORTS_PER_SOL * 1,
+        // );
 
-        await provider.connection.confirmTransaction(airdropSignature);
+        // await provider.connection.confirmTransaction(airdropSignature);
 
 
         for (let i = 0; i < nftOwnUsers.length; i++) {
@@ -333,30 +344,46 @@ describe("nftDex", async () => {
         console.log("Offers related to inactive NFTs were Deleted! tx:", delete_offers_tx);
     });
 
+    it("OffersAllDelete", async () => {
+
+        const offers_list = await getOfferCreateAccounts(program.programId);
+
+        for (let i = 0; i < offers_list.length; i++) {
+            const tx = await program.rpc.offerDelete({
+                accounts: {
+                    offerCreate: offers_list[i].offer_account_address,
+                    payer: provider.wallet.publicKey
+                }
+            });
+            console.log(`Successed! tx: ${i+1} : `, tx);
+        }
+    });
+
+
     it("OfferCreate!", async () => {
 
-        const accounts = await provider.connection.getParsedProgramAccounts(
-            TOKEN_PROGRAM_ID,
-            {
-                filters: [
-                    {
-                        dataSize: 165
-                    },
-                    {
-                        memcmp: {
-                            offset: 76,
-                            bytes: provider.wallet.publicKey.toBase58()
-                        }
-                    }
-                ]
-            }
-        );
+        // const accounts = await provider.connection.getParsedProgramAccounts(
+        //     TOKEN_PROGRAM_ID,
+        //     {
+        //         filters: [
+        //             {
+        //                 dataSize: 165
+        //             },
+        //             {
+        //                 memcmp: {
+        //                     offset: 76,
+        //                     bytes: provider.wallet.publicKey.toBase58()
+        //                 }
+        //             }
+        //         ]
+        //     }
+        // );
 
         let activated_nfts: string[] = [];
 
-        accounts.forEach((account, i) => {
-            activated_nfts.push(account.account.data["parsed"]["info"]["mint"]);
-        });
+        // accounts.forEach((account, i) => {
+        //     activated_nfts.push(account.account.data["parsed"]["info"]["mint"]);
+        // });
 
         let nfts_activated: boolean = true;
 
@@ -386,10 +413,10 @@ describe("nftDex", async () => {
                     anchor.utils.bytes.utf8.encode(current_timestamp.toString())
                 ], program.programId);
 
-            if (!nfts_activated) {
-                console.log("NFTs were not activated! Please active NFTs before creating offer!");
-                break;
-            }
+            // if (!nfts_activated) {
+            //     console.log("NFTs were not activated! Please active NFTs before creating offer!");
+            //     break;
+            // }
             if (i == 4) datetime -= 2 * 3600 * 1000;
 
             console.log("current_timestamp:", current_timestamp, offers[i].supply_user.publicKey.toBase58());
@@ -428,23 +455,25 @@ describe("nftDex", async () => {
             }
         });
         console.log("Successed! tx:", tx);
+
+
     });
 
     it("OfferDeleteExp", async () => {
 
         const offers_list = await getOfferCreateAccounts(program.programId);
 
-        offers_list.forEach(async (offer, i) => {
-            if (offer.expiration < datetime + 3600 * 1000) {
+        for (let i = 0; i < offers_list.length; i++) {
+            if (offers_list[i].expiration < datetime + 3600 * 1000) {
                 const tx = await program.rpc.offerDelete({
                     accounts: {
-                        offerCreate: offers_list[4].offer_account_address,
+                        offerCreate: offers_list[i].offer_account_address,
                         payer: provider.wallet.publicKey
                     }
                 });
-                console.log("Successed! tx:", tx);
+                console.log("Successed! tx:", tx, "  --------->   ", i);
             }
-        });
+        }
     });
 
 
@@ -457,8 +486,20 @@ describe("nftDex", async () => {
         // Offer 1 , 2 , 3
 
         for (let i = 0; i < 3; i++) {
-            supply_nfts = [...supply_nfts, { ...offers_list[i].used_nfts.filter((nftObj) => nftObj.action == "supply"), owner: offers_list[i].owner }];
-            demand_nfts = [...demand_nfts, { ...offers_list[i].used_nfts.filter((nftObj) => nftObj.action == "demand"), owner: offers_list[i].owner }];
+            offers_list[i].used_nfts.forEach((nftObj) => {
+                if (nftObj.action == "supply") {
+                    supply_nfts.push({
+                        nft_address: nftObj.nft_address,
+                        owner: offers_list[i].owner
+                    })
+                }
+                if (nftObj.action == "demand") {
+                    demand_nfts.push({
+                        nft_address: nftObj.nft_address,
+                        owner: offers_list[i].owner
+                    })
+                }
+            });
         }
 
         if (demand_nfts.length != supply_nfts.length) {
@@ -466,13 +507,17 @@ describe("nftDex", async () => {
             return;
         }
         supply_nfts.forEach((nftObj, i) => {
-            const demand_nftObj = demand_nfts.filter((demand_nftObj) => demand_nftObj.nft_address == nftObj.nft_address);
+            const demand_nftObj = demand_nfts.filter((demand_nftObj: { nft_address: string, owner: string }) => demand_nftObj.nft_address == nftObj.nft_address);
             supply_nfts[i].newOwner = demand_nftObj[0].owner;
         })
 
         const transaction = new Transaction();
 
-        supply_nfts.forEach(async (nftObj) => {
+        console.log("supply_nfts:", supply_nfts);
+
+
+        for (let i = 0; i < supply_nfts.length; i++) {
+            const nftObj = supply_nfts[i];
 
             const user_nft_token_account = await getAssociatedTokenAddress(
                 new PublicKey(nftObj.nft_address),
@@ -493,14 +538,21 @@ describe("nftDex", async () => {
                         newUserNftAccount: new_user_nft_token_account,
                         nftMint: new PublicKey(nftObj.nft_address),
                         tokenProgram: TOKEN_PROGRAM_ID,
-                        owner: provider.wallet.publicKey
-                    }
+                        owner: provider.wallet.publicKey,
+                        tradeCreateSigner: nftDexTradeSignAccount.publicKey
+                    },
+                    signers: [
+                        nftDexTradeSignAccount,
+                        payer
+                    ]
                 })
             );
+        }
 
-        });
+        // transaction.recentBlockhash = (await provider.connection.getRecentBlockhash("max")).blockhash;
+        // const tx = await provider.send(transaction);
 
-        const tx = await provider.send(transaction);
+        const tx = await provider.connection.sendTransaction(transaction, [payer, nftDexTradeSignAccount]);
 
         console.log("Trade Successed! tx:", tx);
 
@@ -519,7 +571,7 @@ describe("nftDex", async () => {
 
         const tx1 = await provider.send(transactionDeleteOffersTradeDone);
 
-        console.log("Offers Deleted! tx:", tx1);
+        console.log("Offers Deleted after Trade! tx:", tx1);
 
     });
 });

@@ -6,11 +6,11 @@ pub mod state;
 use error::*;
 use state::*;
 
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer, Approve, Revoke};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer, Approve};
 
 const OFFER_CREATE_ACCOUT_PREFIX: &[u8] = b"offer_create";
 
-declare_id!("5v8VeEDzTYU6ESueJNwUMV3UGgTMmo4dDs19bNS1yDqb");
+declare_id!("FPXufVFzjVreF5ResTtw44hPpir4zRRkUiMK6xJeuMfL");
 
 #[program]
 pub mod nft_dex {
@@ -40,15 +40,16 @@ pub mod nft_dex {
         let token_program = &mut ctx.accounts.token_program;
         let user = &mut ctx.accounts.user;
 
-        let approve_accounts = Revoke {
-            source: user_nft_account.to_account_info(),
+        let approve_accounts = Approve {
+            to: user_nft_account.to_account_info(),
+            delegate: user.to_account_info(),
             authority: user.to_account_info()
         };
 
         let approve_ctx = CpiContext::new(token_program.to_account_info(), approve_accounts);
 
-        token::revoke(approve_ctx)?;
-        
+        token::approve(approve_ctx, 1)?;
+
         Ok(())
     }
 
@@ -246,6 +247,10 @@ pub struct TradeCreate<'info> {
     /// CHECK:` doc comment explaining why no checks through types are necessary.
     #[account(mut, signer)]
     pub owner: AccountInfo<'info>,
+
+    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    #[account(mut, signer)]
+    pub trade_create_signer: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
 
