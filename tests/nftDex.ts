@@ -35,17 +35,17 @@ const getOfferCreateAccounts = async (programId: PublicKey) => {
         {
             dataSlice: {
                 offset: 8,
-                length: 409
+                length: 377
             }
             ,
             filters: [
                 {
-                    dataSize: 417
+                    dataSize: 385
                 },
                 {
                     memcmp: {
-                        offset: 40,
-                        bytes: programId.toBase58()
+                        offset: 0,
+                        bytes: ""
                     }
                 }
             ]
@@ -70,7 +70,6 @@ const getOfferCreateAccounts = async (programId: PublicKey) => {
                     kind: "struct",
                     fields: [
                         ["wallet_id", "Pubkey"],
-                        ["owner", "Pubkey"],
                         ["supply_1", "Pubkey"],
                         ["supply_2", "Pubkey"],
                         ["supply_3", "Pubkey"],
@@ -161,7 +160,7 @@ describe("nftDex", async () => {
     let nftDexTradeSignAccount_secretKey = bs58.decode(nftDexTradeSignAccount_privateKey);
     const nftDexTradeSignAccount = anchor.web3.Keypair.fromSecretKey(nftDexTradeSignAccount_secretKey);
     // Expiration DateTime
-    let datetime = 24 * 3600 * 1000;
+    let datetime = new Date().getTime() + 24 * 3600 * 1000;
     let nftMint: anchor.web3.PublicKey;
 
     let nft_addresses: anchor.web3.PublicKey[] = [];
@@ -177,6 +176,8 @@ describe("nftDex", async () => {
     const user_a_wallet = anchor.web3.Keypair.generate();
     const user_b_wallet = anchor.web3.Keypair.generate();
     const user_c_wallet = anchor.web3.Keypair.generate();
+
+    const user_wallets = [user_a_wallet , user_b_wallet, user_c_wallet];
 
     const nftOwnUsers = [
         user_a_wallet,
@@ -235,7 +236,8 @@ describe("nftDex", async () => {
             // Offer 3 (user_c): supply 2, demand 3, demand 4
 
             // Offer 4 (user_a): supply 3, demand 2 
-            // Offer 5 (user_c): supply 2, demand 4 
+            // Offer 5 (user_b): supply 4, demand 2 
+            // Offer 6 (user_c): supply 2, demand 4 
 
             offers = [
                 {
@@ -257,6 +259,11 @@ describe("nftDex", async () => {
                     nft_supply_ids: [nft_addresses[2]],
                     nft_demand_ids: [nft_addresses[1]],
                     supply_user: user_a_wallet
+                },
+                {
+                    nft_supply_ids: [nft_addresses[3]],
+                    nft_demand_ids: [nft_addresses[1]],
+                    supply_user: user_b_wallet
                 },
                 {
                     nft_supply_ids: [nft_addresses[1]],
@@ -362,47 +369,89 @@ describe("nftDex", async () => {
 
     it("OfferCreate!", async () => {
 
-        // const accounts = await provider.connection.getParsedProgramAccounts(
-        //     TOKEN_PROGRAM_ID,
-        //     {
-        //         filters: [
-        //             {
-        //                 dataSize: 165
-        //             },
-        //             {
-        //                 memcmp: {
-        //                     offset: 76,
-        //                     bytes: provider.wallet.publicKey.toBase58()
-        //                 }
-        //             }
-        //         ]
-        //     }
-        // );
+        //TODO: `Getting NFTs which were delegated nftDex owner.
 
-        let activated_nfts: string[] = [];
 
-        // accounts.forEach((account, i) => {
-        //     activated_nfts.push(account.account.data["parsed"]["info"]["mint"]);
-        // });
+        let activatedNFTAccounts = [];
 
-        let nfts_activated: boolean = true;
+        for ( let i = 0; i < user_wallets.length ; i ++ ) {
+            let activatedNFTAccounts_user = await provider.connection.getParsedProgramAccounts(
+                TOKEN_PROGRAM_ID,
+                {
+                    filters: [
+                        {
+                            dataSize: 165
+                        },
+                        {
+                            memcmp: {
+                                offset: 76,
+                                bytes: provider.wallet.publicKey.toBase58()
+                            },
+                        },
+                        {
+                            memcmp: {
+                                offset: 32,
+                                bytes: user_wallets[i].publicKey.toBase58()
+                            }
+                        }
+                    ]
+                }
+            );
+            activatedNFTAccounts = activatedNFTAccounts.concat(activatedNFTAccounts_user);
+        }
+
+        let activated_nfts = [];
+
+        activatedNFTAccounts.forEach((account, i) => {
+            activated_nfts.push({nft_address: account.account.data["parsed"]["info"]["mint"], owner: account.account.data["parsed"]["info"]["owner"]});
+        });
+
+        let nfts_activated: boolean = true , nft_supply_offer_creator: boolean = true , nft_demand_offer_creator: boolean = true;
 
         for (let i = 0; i < offers.length; i++) {
 
+            // Check Supply NFT's transfer Authority.
+            
             offers[i].nft_supply_ids.forEach((supply_nft) => {
-                if (supply_nft != program.programId && !activated_nfts.find((nft_in_marketplace) => nft_in_marketplace == supply_nft.toBase58())) {
-                    console.log(`NFT ${supply_nft} was not activated for supply! Please set active`);
+                
+                if(supply_nft == program.programId) return;
+
+                const target_nft = activated_nfts.find((nft_in_marketplace) => nft_in_marketplace.nft_address == supply_nft.toBase58());
+
+                if (!target_nft) {
+                    console.log(`NFT ID ${supply_nft} must give transfer authority to NFTDEX to exist in offer`);
                     nfts_activated = false;
                 }
+
+                // Check the Owner of Supply NFTs
+
+                if (target_nft.owner != offers[i].supply_user.publicKey) {
+                    console.log(`Account must be owner of NFT ${supply_nft} supplied in offer.`);
+                    nft_supply_offer_creator = false;
+                }
+
             });
+
+            // Check Demand NFT's transfer Authority.
 
             offers[i].nft_demand_ids.forEach((demand_nft) => {
-                if (demand_nft != program.programId && !activated_nfts.find((nft_in_marketplace) => nft_in_marketplace == demand_nft.toBase58())) {
-                    console.log(`NFT ${demand_nft} was not activated for demand! Please set active`);
+
+                if(demand_nft == program.programId) return;
+
+                const target_nft = activated_nfts.find((nft_in_marketplace) => nft_in_marketplace.nft_address == demand_nft.toBase58());
+
+                if (!target_nft) {
+                    console.log(`NFT ID ${demand_nft} must give transfer authority to NFTDEX to exist in offer`);
                     nfts_activated = false;
                 }
+                
+                // Check the Owner of Demand NFTs
+                
+                if (target_nft.owner == offers[i].supply_user.publicKey) {
+                    console.log(`Account must not be owner of NFT ${demand_nft} demanded in offer.`);
+                    nft_demand_offer_creator = false;
+                }
             });
-
 
             let current_timestamp = new Date().getTime();
 
@@ -413,14 +462,16 @@ describe("nftDex", async () => {
                     anchor.utils.bytes.utf8.encode(current_timestamp.toString())
                 ], program.programId);
 
-            // if (!nfts_activated) {
-            //     console.log("NFTs were not activated! Please active NFTs before creating offer!");
-            //     break;
-            // }
-            if (i == 4) datetime -= 2 * 3600 * 1000;
+            if (!nfts_activated || !nft_supply_offer_creator || !nft_demand_offer_creator) break;
 
-            console.log("current_timestamp:", current_timestamp, offers[i].supply_user.publicKey.toBase58());
+            if ( i == 5 ) datetime -= 2 * 3600 * 1000;
 
+            // Check Expiration Date is later than Current Time.
+
+            if (datetime < current_timestamp ) {
+                console.log("Expiration must be later than offer creation date");
+                break;
+            }
 
             const tx = await program.rpc.offerCreate(
                 new anchor.BN(datetime),
@@ -435,10 +486,14 @@ describe("nftDex", async () => {
                         clock: anchor.web3.SYSVAR_CLOCK_PUBKEY,
                         payer: provider.wallet.publicKey,
                         systemProgram: anchor.web3.SystemProgram.programId
-                    }
+                    },
+                    signers: [
+                        offers[i].supply_user,
+                        payer
+                    ]
                 }
             );
-            console.log("Offer_", (i + 1), " Successed! Transaction signature", tx);
+            console.log("Offer_", (i + 1), "_:", offer_create_account[0].toBase58(), " Successed! Transaction signature", tx);
 
         }
 
@@ -448,14 +503,25 @@ describe("nftDex", async () => {
 
         const offers_list = await getOfferCreateAccounts(program.programId);
 
-        const tx = await program.rpc.offerDelete({
+        // const user_wallet = user_wallets.find((wallet) => wallet.publicKey == offers_list[4].offer_account_address );
+
+        if (user_a_wallet.publicKey != offers_list[4].offer_account_address) {
+            console.log("Account must be creator of offer(s) to delete.");
+            return;
+        }
+
+        const tx = await program.rpc.offerDeleteByUser({
             accounts: {
                 offerCreate: offers_list[4].offer_account_address,
-                payer: provider.wallet.publicKey
-            }
+                payer: provider.wallet.publicKey,
+                user: user_a_wallet.publicKey
+            },
+            signers: [
+                user_a_wallet,
+                payer
+            ]
         });
         console.log("Successed! tx:", tx);
-
 
     });
 
@@ -532,7 +598,7 @@ describe("nftDex", async () => {
             );
 
             transaction.add(
-                program.instruction.traderCreate({
+                program.instruction.tradeCreate({
                     accounts: {
                         userNftAccount: user_nft_token_account,
                         newUserNftAccount: new_user_nft_token_account,

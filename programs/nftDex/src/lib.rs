@@ -66,7 +66,6 @@ pub mod nft_dex {
         let clock = &ctx.accounts.clock;
 
         offer_create.wallet_id = user.to_account_info().key();
-        offer_create.owner = id().key();
         offer_create.supply_1 = nft_supply_ids[0];
         offer_create.supply_2 = nft_supply_ids[1];
         offer_create.supply_3 = nft_supply_ids[2];
@@ -82,6 +81,25 @@ pub mod nft_dex {
         offer_create.created = clock.unix_timestamp;
         offer_create.expiration = datetime;
         offer_create.bump = bump;
+
+        Ok(())
+    }
+
+    pub fn offer_delete_by_user(
+        ctx: Context<OfferDeleteByUser>
+    ) -> Result<()> {
+        let offer_create = &mut ctx.accounts.offer_create;
+        let payer = &mut ctx.accounts.payer;
+
+        let starting_lamports = payer.to_account_info().lamports();
+        **payer.to_account_info().lamports.borrow_mut() = starting_lamports
+            .checked_add(offer_create.to_account_info().lamports())
+            .unwrap();
+        **offer_create.to_account_info().lamports.borrow_mut() = 0;
+
+        let binding = offer_create.to_account_info();
+        let mut offer_create_data = binding.data.borrow_mut();
+        offer_create_data.fill(0);
 
         Ok(())
     }
@@ -105,7 +123,7 @@ pub mod nft_dex {
         Ok(())
     }
 
-    pub fn trader_create(
+    pub fn trade_create(
         ctx: Context<TradeCreate>
     ) -> Result<()> {
 
@@ -141,11 +159,11 @@ pub struct SetActiveNFT<'info> {
     
     pub nft_mint: Box<Account<'info, Mint>>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary
+    /// CHECK:` This is the common account
     #[account(mut, signer)]
     pub user: AccountInfo<'info>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary
+    /// CHECK:` This is the common account
     #[account(mut, signer)]
     pub owner: AccountInfo<'info>,
 
@@ -173,11 +191,11 @@ pub struct SetInactiveNFT<'info> {
     )]
     pub user_nft_account: Account<'info, TokenAccount>,
     
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    /// CHECK:` This is the common account.
     #[account(mut, signer)]
     pub owner: AccountInfo<'info>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    /// CHECK:` This is the common account.
     #[account(mut, signer)]
     pub user: AccountInfo<'info>,
 
@@ -199,15 +217,15 @@ pub struct OfferCreate<'info> {
         payer = payer,
         seeds=[&id().to_bytes(), OFFER_CREATE_ACCOUT_PREFIX, timestamp.to_string().as_str().as_ref()],
         bump,
-        space= 8 + 8 * 3 + 32 * 12 + 1
+        space= 8 + 8 * 3 + 32 * 11 + 1
     )]
     pub offer_create: Account<'info, OfferCreateAccount>,
     
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
-    #[account(mut)]
+    /// CHECK:` This is the common account.
+    #[account(mut, signer)]
     pub user: AccountInfo<'info>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    /// CHECK:` This is the common account.
     #[account(mut, signer)]
     pub payer: AccountInfo<'info>,
 
@@ -222,9 +240,24 @@ pub struct OfferDelete<'info> {
     #[account(mut)]
     pub offer_create: Account<'info, OfferCreateAccount>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    /// CHECK:` This is the common account.
     #[account(mut)]
     pub payer: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct OfferDeleteByUser<'info> {
+    /// The offer account
+    #[account(mut)]
+    pub offer_create: Account<'info, OfferCreateAccount>,
+
+    /// CHECK:` This is the common account.
+    #[account(mut)]
+    pub payer: AccountInfo<'info>,
+
+    /// CHECK:` This is the common account.
+    #[account(mut)]
+    pub user: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -244,11 +277,11 @@ pub struct TradeCreate<'info> {
     #[account(mut)]
     pub new_user_nft_account: Account<'info, TokenAccount>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    /// CHECK:` This is the common account.
     #[account(mut, signer)]
     pub owner: AccountInfo<'info>,
 
-    /// CHECK:` doc comment explaining why no checks through types are necessary.
+    /// CHECK:` This is the common account.
     #[account(mut, signer)]
     pub trade_create_signer: AccountInfo<'info>,
 

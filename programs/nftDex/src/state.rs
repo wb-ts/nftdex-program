@@ -3,7 +3,6 @@ use anchor_lang::prelude::*;
 #[account]
 pub struct OfferCreateAccount {
     pub wallet_id: Pubkey,
-    pub owner: Pubkey,
     pub supply_1: Pubkey,
     pub supply_2: Pubkey,
     pub supply_3: Pubkey,
