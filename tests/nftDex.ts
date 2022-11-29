@@ -13,6 +13,10 @@ const nftDexOwner_secretKey = "[1,54,225,227,220,138,148,204,28,42,34,184,154,39
 
 const nftDexTradeSignAccount_privateKey = "ypVPJNjVaQj9DbsKaZLtAwMEiUKAuxLGmMzRHMRXEvJzjWcDi6z2yzaRaj8stFUSKAt3f2U5Sfyd1H9gWPfPxXp";
 
+const user_a_wallet_private_key = "3wwVDR7y8tcugLRrvjHGuxZPog1hzvC9WzjRUE5DDdYahVU95vbWpRXeVzGqyZwEpgB5KZ7EQznhojqiSTsxHEaS";
+const user_b_wallet_private_key = "5XfarJA7adZMAiaTHxxYgFqXbvK2cVaDigtJaA8GeW31CixpFhAfW5XMg6UDD5LriDYaHrc75hc7LrA9cmjeXzFt";
+const user_c_wallet_private_key = "J6qF11JnQHyfdKgwf1JBj1iSryyiy3fLoH8Rj71hcfyXXPLWz86CysHQkbKoxe3VJ2iAP4Q5EknstG69LvJtz29";
+
 interface offerItemType {
     offer_account_address: PublicKey;
     owner: string;
@@ -173,9 +177,9 @@ describe("nftDex", async () => {
 
     let offers: offerType[] = [];
 
-    const user_a_wallet = anchor.web3.Keypair.generate();
-    const user_b_wallet = anchor.web3.Keypair.generate();
-    const user_c_wallet = anchor.web3.Keypair.generate();
+    const user_a_wallet =  anchor.web3.Keypair.fromSecretKey(bs58.decode(user_a_wallet_private_key))
+    const user_b_wallet =  anchor.web3.Keypair.fromSecretKey(bs58.decode(user_b_wallet_private_key))
+    const user_c_wallet =  anchor.web3.Keypair.fromSecretKey(bs58.decode(user_c_wallet_private_key))
 
     const user_wallets = [user_a_wallet , user_b_wallet, user_c_wallet];
 
