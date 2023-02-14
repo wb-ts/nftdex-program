@@ -2,9 +2,16 @@ use anchor_lang::prelude::*;
 
 pub mod error;
 pub mod state;
+// pub mod validation;
 
 use error::*;
 use state::*;
+
+// use solana_client::{
+//     rpc_client::RpcClient
+//   };
+
+// use solana_sdk::commitment_config::CommitmentConfig;
 
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer, Approve};
 
@@ -39,11 +46,12 @@ pub mod nft_dex {
         let user_nft_account = &mut ctx.accounts.user_nft_account;
         let token_program = &mut ctx.accounts.token_program;
         let user = &mut ctx.accounts.user;
+        let owner = &mut ctx.accounts.owner;
 
         let approve_accounts = Approve {
             to: user_nft_account.to_account_info(),
             delegate: user.to_account_info(),
-            authority: user.to_account_info()
+            authority: owner.to_account_info()
         };
 
         let approve_ctx = CpiContext::new(token_program.to_account_info(), approve_accounts);
@@ -64,6 +72,31 @@ pub mod nft_dex {
         let offer_create = &mut ctx.accounts.offer_create;
         let user = &mut ctx.accounts.user;
         let clock = &ctx.accounts.clock;
+        
+        // let rpc_url = String::from("http://api.devnet.solana.com");
+        // let connection = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
+
+        // for supply_nft in &nft_supply_ids {
+        //     if *supply_nft != user.to_account_info().key() {
+        //         let account = connection.get_account(&supply_nft).unwrap();
+        //         if account.owner != user.to_account_info().key() {
+        //             return Err(NFTDEXError::OfferSupplyNotOwner.into());
+        //         }
+        //     }
+        // }
+
+        // for demand_nft in &nft_demand_ids {
+        //     if *demand_nft != user.to_account_info().key() {
+        //         let account = connection.get_account(&demand_nft).unwrap();
+        //         if account.owner == user.to_account_info().key() {
+        //             return Err(NFTDEXError::OfferDemandOwner.into());
+        //         }
+        //     }
+        // }
+
+        // if datetime < timestamp {
+        //     return Err(NFTDEXError::OfferExpirationError.into());
+        // }
 
         offer_create.wallet_id = user.to_account_info().key();
         offer_create.supply_1 = nft_supply_ids[0];
@@ -196,7 +229,7 @@ pub struct SetInactiveNFT<'info> {
     pub owner: AccountInfo<'info>,
 
     /// CHECK:` This is the common account.
-    #[account(mut, signer)]
+    #[account(mut)]
     pub user: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
