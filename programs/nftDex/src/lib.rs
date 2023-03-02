@@ -73,9 +73,6 @@ pub mod nft_dex {
         let user = &mut ctx.accounts.user;
         let clock = &ctx.accounts.clock;
         
-        // let rpc_url = String::from("http://api.devnet.solana.com");
-        // let connection = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
-
         // for supply_nft in &nft_supply_ids {
         //     if *supply_nft != user.to_account_info().key() {
         //         let account = connection.get_account(&supply_nft).unwrap();
